@@ -1,0 +1,893 @@
+---
+title: 'WORK SAMPLE FOR DATA SCIENCE 3'
+subtitle: 'FORECAST TRAIN OCCUPANCY LEVEL IN BELGIUM'
+author: "Jeong Hoon Kim, Luke Hassall"
+date: "DEC 20th, 2019"
+output:
+  html_document:
+    code_folding: hide
+    toc: yes
+    toc_float:
+      collapsed: no
+      include: no
+      smooth_scroll: yes
+  pdf_document:
+    toc: yes
+---
+
+```{r setup, message=FALSE, warning=FALSE, include=FALSE, echo=TRUE, cache=TRUE}
+# rm(list=ls())
+# install.packages("packagename")
+# install.packages("BelgiumMaps.Admin", repos = "http://www.datatailor.be/rcube", type = "source")
+# install.packages("BelgiumMaps.StatBel", repos = "http://www.datatailor.be/rcube", type = "source")
+# install.packages("BelgiumStatistics", repos = "http://www.datatailor.be/rcube", type = "source")
+# vignette("BelgiumMaps_AdministrativeAreas_StatBel", package = "BelgiumMaps.StatBel")
+
+library(magrittr)
+require(magrittr)
+require(dplyr)
+require(spatialEco)
+require(sp)
+library(sp)
+require(foreign)
+require(nnet)
+require(ggplot2)
+require(reshape2)
+require(rgdal)
+require(foreign)
+require(nnet)
+require(ggplot2)
+require(reshape2)
+library(ggmap)
+library(censusapi)
+library(corrplot)
+library(stargazer)
+library(tidyverse)
+library(tidycensus)
+library(ggplot2)
+library(sf)
+library(tigris)
+library(QuantPsyc)
+library(RSocrata)
+library(viridis)
+library(caret)
+library(spatstat)
+library(spdep)
+library(FNN)
+library(grid)
+library(gridExtra)
+library(knitr)
+library(kableExtra)
+library(raster)
+library(wesanderson)
+library(magrittr)
+library(dplyr)
+library(sp)
+library(BelgiumMaps.Admin)
+library(data.table)
+library(leaflet)
+library(BelgiumStatistics)
+library(BelgiumMaps.StatBel)
+library(rgeos)
+library(anytime)
+library(lubridate)
+library(rnaturalearth)
+library(data.table)
+library(tmap)
+library(Hmisc)
+library(maptools)
+library(readxl)
+library(ggthemes)
+library(plyr)
+library(tidyr)
+library(tidytext)
+library(janeaustenr)
+library(ggplot2)
+library(Rmisc)
+library(wesanderson)
+library(corrplot)
+library(PerformanceAnalytics)
+
+mapTheme <- function(base_size = 12) {
+  theme(
+    text = element_text( color = "black"),
+    plot.title = element_text(size = 15,colour = "black"),
+    plot.subtitle=element_text(face="italic"),
+    plot.caption=element_text(hjust=0),
+    axis.ticks = element_blank(),
+    panel.background = element_blank(),axis.title = element_blank(),
+    axis.text = element_blank(),
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_rect(colour = "black", fill=NA, size=2)
+  )
+}
+
+myTheme <- theme(
+  plot.title =element_text(hjust = 0.5,size=12),
+  plot.subtitle = element_text(size=8),
+  plot.caption = element_text(size = 6),
+  axis.text.x = element_text(size = 10, angle = 45, hjust = 1),
+  axis.text.y = element_text(size = 10),
+  axis.title.y = element_text(size = 10),
+  panel.background=element_blank(),
+  plot.background=element_blank(),
+  panel.grid.major=element_line(colour="#D0D0D0",size=.75),
+  axis.ticks=element_blank())
+
+plotTheme <- function(base_size = 12) {
+  theme(
+    text = element_text( color = "black"),
+    plot.title = element_text(size = 14,colour = "black"),
+    plot.subtitle = element_text(face="italic"),
+    plot.caption = element_text(hjust=0),
+    axis.ticks = element_blank(),
+    panel.background = element_blank(),
+    panel.grid.major = element_line("grey80", size = 0.1),
+    panel.grid.minor = element_blank(),
+    panel.border = element_rect(colour = "black", fill=NA, size=2),
+    strip.background = element_rect(fill = "grey80", color = "white"),
+    strip.text = element_text(size=12),
+    axis.title = element_text(size=12),
+    axis.text = element_text(size=10),
+    plot.background = element_blank(),
+    legend.background = element_blank(),
+    legend.title = element_text(colour = "black", face = "italic"),
+    legend.text = element_text(colour = "black", face = "italic"),
+    strip.text.x = element_text(size = 14)
+  )
+}
+
+palette1 <- c("#FA7800","#C48C04","#8FA108","#5AB60C","#25CB10")
+palette2 <- c("#25CB10", "#5AB60C", "#8FA108", "#C48C04", "#FA7800")
+pal <- wes_palette("Zissou1", 5, type = "continuous")
+
+getmode <- function(v) {
+  uniqv <- unique(v)
+  uniqv[which.max(tabulate(match(v, uniqv)))]
+}
+
+```
+
+
+
+    * https://www.youtube.com/watch?v=S_SvZ3rMKFU&feature=youtu.be
+    THIS LINK IS FOR THE VEDEO EXPLANATIONS OF OUR PROEJCTS ON YOUTUBE. 
+
+
+
+###1. DATA WRANGLING
+
+####1-0. IMPORTING BASIC DATA AND MAP
+
+```{r echo=TRUE, results=FALSE, message=FALSE, warning=FALSE}
+stations <-
+  read.csv("C:/Users/user/Desktop/Spatial/FinalProject_Coding/stations.csv") %>%
+  st_as_sf(coords = c("longitude", "latitude"), crs = 4326) %>%
+  mutate(station_id = as.numeric(str_sub(URI, 31, 39)))
+
+#  train2 <-read.csv("C:/Users/user/Desktop/Spatial/FinalProject_Coding/trains_train.csv")
+
+train <-
+  read.csv("C:/Users/user/Desktop/Spatial/FinalProject_Coding/trains_train.csv") %>%
+  mutate(from = as.numeric(as.character(from)), to = as.numeric(as.character(to))) %>%
+  left_join(dplyr::select(stations, station_id), by = c("from" = "station_id")) %>%
+  st_sf() %>% 
+  mutate(from.X = st_coordinates(.)[,1], from.Y = st_coordinates(.)[,2]) %>%
+  st_drop_geometry() %>%
+  left_join(dplyr::select(stations, station_id), by = c("to" = "station_id")) %>%
+  st_sf() %>% 
+  mutate(to.X = st_coordinates(.)[,1], to.Y = st_coordinates(.)[,2]) %>%
+  st_drop_geometry() %>%
+  mutate(distance = sqrt((from.X - to.X)^2 + (from.Y - to.Y)^2)) %>%
+  arrange(-distance)
+test <-
+  read.csv("C:/Users/user/Desktop/Spatial/FinalProject_Coding/trains_test.csv") %>% 
+  mutate(from = as.numeric(as.character(from)), to = as.numeric(as.character(to))) %>%
+  left_join(dplyr::select(stations, station_id), by = c("from" = "station_id")) %>%
+  st_sf() %>% 
+  mutate(from.X = st_coordinates(.)[,1], from.Y = st_coordinates(.)[,2]) %>%
+  st_drop_geometry() %>%
+  left_join(dplyr::select(stations, station_id), by = c("to" = "station_id")) %>%
+  st_sf() %>% 
+  mutate(to.X = st_coordinates(.)[,1], to.Y = st_coordinates(.)[,2]) %>%
+  st_drop_geometry() %>%
+  mutate(distance = sqrt((from.X - to.X)^2 + (from.Y - to.Y)^2)) %>%
+  arrange(-distance)
+
+train <- train %>%
+  mutate(datetime = as.POSIXct(paste(train$date, train$time), format="%Y-%m-%d %I:%M:%S %p"),
+         weekdays = format(datetime, '%A'),
+         hours = as.integer(format(datetime, '%H')))
+test <- test %>%
+  mutate(datetime = as.POSIXct(paste(test$date, test$time), format="%Y-%m-%d %I:%M:%S %p"),
+         weekdays = format(datetime, '%A'),
+         hours = as.integer(format(datetime, '%H')))
+
+train <- train %>%
+  mutate (
+       peaktime = ifelse(hours > 6 & hours < 10 | hours > 15 & hours < 19 , 1, 0))
+test <- test %>%
+  mutate (
+       peaktime = ifelse(hours > 6 & hours < 10 | hours > 15 & hours < 19 , 1, 0))
+
+train_data <- na.omit(train) 
+test_data <- na.omit(test) 
+
+```
+
+####1-1. OCCUPANCY LEVEL BY O-D
+
+First, for finding locations of origination and destination as well as checking the occupancy levels, the below maps were created. The first map shows the location and occupancy level of originaion stations and the second is the destinations. For teh colors, the green represents low occupancy level, yellow means medium, and red is high level of occupancy.
+
+For better analysis, the training datasets are trimmed. Origination or destination stations located in the outside of Belgium in the training dataset was removed. And the below map show the all O-D stations location in Belgium.
+
+
+**FIGURE 1-1. 1) MAP OF OCCUPANCY LEVEL BY ORIGINATION**
+
+```{r fig.height=5, fig.width=8, fig.align="left", warning=FALSE}
+getColor <- function(train) {
+  sapply(train$occupancy, function(occupancy) {
+  if(occupancy == "low") {
+    "green"
+  } else if(occupancy == "medium") {
+    "orange"
+  } else {
+    "3"
+  } })
+}
+
+icons <- awesomeIcons(
+  icon = 'ios-close',
+  iconColor = 'black',
+  library = 'ion',
+  markerColor = getColor(train)
+)
+
+leaflet(train) %>% addTiles() %>%
+  addAwesomeMarkers(~from.X, ~from.Y, icon=icons, label=~as.character(occupancy))
+
+```
+
+
+
+**FIGURE 1-1. 2) MAP OF OCCUPANCY LEVEL BY DESTINATION**
+
+```{r fig.height=5, fig.width=8, fig.align="left", warning=FALSE}
+icons2 <- awesomeIcons(
+  icon = 'ios-close',
+  iconColor = 'white',
+  library = 'ion',
+  markerColor = getColor(train)
+)
+
+leaflet(train) %>% addTiles() %>%
+  addAwesomeMarkers(~to.X, ~to.Y, icon=icons2, label=~as.character(occupancy))
+
+```
+
+
+**FIGURE 1-1. 3) LOCATION OF ALL STATIONS IN BELGIUM IN THE TRAINING DATASET**
+
+```{r fig.height=5, fig.width=8, fig.align="left", results=FALSE, message=FALSE, warning=FALSE}
+
+# Origination Stations Location 
+train_data_og_sf <- train_data %>%
+  st_as_sf(coords = c("from.X","from.Y"), crs = 4326) %>% 
+  mutate(station_id = as.numeric(from))
+test_data_og_sf <- test_data %>%
+  st_as_sf(coords = c("from.X","from.Y"), crs = 4326) %>% 
+  mutate(station_id = as.numeric(from))
+
+# Destination Stations Location
+train_data_to_sf <- train_data %>%
+  st_as_sf(coords = c("to.X","to.Y"), crs = 4326) %>% 
+  mutate(station_id = as.numeric(to))
+test_data_to_sf <- test_data %>%
+  st_as_sf(coords = c("to.X","to.Y"), crs = 4326) %>% 
+  mutate(station_id = as.numeric(to))
+
+# Country Area of Belgium
+data(BE_ADMIN_BELGIUM)
+MyNewProjection <- CRS("+init=EPSG:4326")
+country <- BE_ADMIN_BELGIUM %>%
+  spTransform(MyNewProjection) %>%
+  st_as_sf() 
+
+# TTrim the dataset within the ocuntry - the datasets in the outside of country are outliers.
+train_country_og <- st_intersection(train_data_og_sf, country)
+train_country_to <- st_intersection(train_data_to_sf, country)
+test_country_og <- st_intersection(test_data_og_sf, country)
+test_country_to <- st_intersection(test_data_to_sf, country)
+
+train_data <- train_data[(train_data$from %in% train_country_og$from),]
+train_data <- train_data[(train_data$to %in% train_country_to$to),]
+test_data <- test_data[(test_data$from %in% test_country_og$from),]
+test_data <- test_data[(test_data$to %in% test_country_to$to),]
+
+# Map of Trimmed Data
+train_data_sf1 <- train_data %>%
+  st_as_sf(coords = c("to.X","to.Y"), crs = 4326) %>% 
+  mutate(station_id = as.numeric(to))
+
+train_data_sf2 <- train_data %>%
+  st_as_sf(coords = c("from.X","from.Y"), crs = 4326) %>% 
+  mutate(station_id = as.numeric(to))
+
+ggplot() +
+  geom_sf(data=st_union(country)) +
+  geom_sf(data = train_data_sf1, aes(), show.legend = "point", size = 1) + 
+  geom_sf(data = train_data_sf2, aes(), show.legend = "point", size = 1) + 
+  labs(title="Locations of All Stations in Belgium") +
+  mapTheme()
+
+```
+
+
+
+###2. FEATURE ENGINEERING: INDEPENDENT VARIABLES
+
+For predicting the occupancy level, factor variables are divided by three categories as following: Network features, Time Features, and Socio-Demographic Features. Each categories have few sub-categories and some subcategories have two values from the origination and destination. In case of the socio-demographic features, the below website was referenced, and the datasets are based on the 2015 (https://github.com/weRbelgium/BelgiumStatistics).
+
+    INDEPENDENT VARIABLESS: 
+    1. NETWORK FEATURES             1) DISTANCE BETWEEN O-D (CONTINUOUS)
+                                    2) NUMBER OF UNIQUE TRAINS O OR D STATIONS IN DATASETS (CONTINUOUS)
+                                    3) DESTINATION / ORIGINATION IN INSIDE BRUSSELS REGION OR NOT (BINOMIAL)
+                            
+    2. TIME FEATURES                1) TIME OF THE DAY - PEAK TIME OR NOT (BINOMIAL)
+                                    2) DAY OF WEEK (CATEGORICAL)
+                            
+    3. SOCIO-DEMOGRAPHIC FEATURES   1) POP DENSITIES, 2015 (CONTINUOUS)
+                                    2) CADASTRAL INCOME, 2015 (CONTINUOUS)
+                                    
+    
+####2-1. NETWORK FEATURES
+
+```{r fig.height=5, fig.width=8, echo=TRUE, results=FALSE, message=FALSE, warning=FALSE}
+
+# Network Features 1-1. DISTANCE BETWEEN O-D - Finished the above.
+
+# Network Features 1-2. NUMBER OF UNIQUE TRAINS O OR D STATIONS IN DATASETS
+  # 1) number of unique trains by origination stations
+train_data <- train_data %>%
+  group_by(vehicle,from) %>%
+  add_count(vehicle, name = "count_vehicle_from")
+test_data <- test_data %>%
+  group_by(vehicle,from) %>%
+  add_count(vehicle, name = "count_vehicle_from")
+  # 2) number of unique trains by destination stations
+train_data <- train_data %>%
+  group_by(vehicle, to) %>%
+  add_count(vehicle, name = "count_vehicle_to")
+test_data <- test_data %>%
+  group_by(vehicle, to) %>%
+  add_count(vehicle, name = "count_vehicle_to")
+
+# Network Features 1-3. DESTINATION / ORIGINATION IN INSIDE BRUSSELS REGION OR NOT
+data(BE_ADMIN_SECTORS)
+bxl <- subset(BE_ADMIN_SECTORS, TX_RGN_DESCR_NL %in% "Brussels Hoofdstedelijk Gewest") %>%
+  spTransform(MyNewProjection) %>%
+  st_as_sf()
+
+# Origination Stations Location 
+train_data_og_sf2 <- train_data %>%
+  st_as_sf(coords = c("from.X","from.Y"), crs = 4326) %>% 
+  mutate(station_id = as.numeric(from))
+test_data_og_sf2 <- test_data %>%
+  st_as_sf(coords = c("from.X","from.Y"), crs = 4326) %>% 
+  mutate(station_id = as.numeric(from))
+
+# Destination Stations Location
+train_data_to_sf2 <- train_data %>%
+  st_as_sf(coords = c("to.X","to.Y"), crs = 4326) %>% 
+  mutate(station_id = as.numeric(to))
+test_data_to_sf2 <- test_data %>%
+  st_as_sf(coords = c("to.X","to.Y"), crs = 4326) %>% 
+  mutate(station_id = as.numeric(to))
+
+# Origination and Destination Stations in Brussel
+train_bxl_og <- st_intersection(train_data_og_sf2, bxl)
+train_bxl_to <- st_intersection(train_data_to_sf2, bxl)
+test_bxl_og <- st_intersection(test_data_og_sf2, bxl)
+test_bxl_to <- st_intersection(test_data_to_sf2, bxl)
+
+# Check
+ggplot() +
+  geom_sf(data=st_union(bxl)) +
+  geom_sf(data = train_bxl_og, aes(), show.legend = "point", size = 1) + 
+  geom_sf(data = train_bxl_to, aes(), show.legend = "point", size = 1) + 
+  labs(title="Origination and Destination Stations in Brussel") +
+  mapTheme()
+
+# Finding origiantion and destination stations in Brussel
+train_data_bxl_og <- train_data[(train_data$from %in% train_bxl_og$from),] %>%
+  mutate(og_in_bxl = 1)
+train_data_bxl_to <- train_data[(train_data$to %in% train_bxl_to$to),] %>%
+  mutate(to_in_bxl = 1)
+test_data_bxl_og <- test_data[(test_data$from %in% test_bxl_og$from),] %>%
+  mutate(og_in_bxl = 1)
+test_data_bxl_to <- test_data[(test_data$to %in% test_bxl_to$to),] %>%
+  mutate(to_in_bxl = 1)
+
+# Do table Join the datasets with the original train data - left join
+train_data <- train_data %>% 
+  left_join(train_data_bxl_og)
+train_data <- train_data %>% 
+  left_join(train_data_bxl_to) 
+test_data <- test_data %>% 
+  left_join(test_data_bxl_og)
+test_data <- test_data %>% 
+  left_join(test_data_bxl_to) 
+
+# replace all NA values with 0 
+na.zero <- function (x) {
+    x[is.na(x)] <- 0
+    return(x)
+}
+train_data <- na.zero(train_data)
+test_data <- na.zero(test_data)
+
+```
+
+
+1) DISTANCE BETWEEN ORIGINATION AND DESTINATION
+
+The beloow chart shows distance between origination and destination by occupancy level. The medium occupancy level has the highest average of trip distance among the occupancy level, but the difference between them is not large.  
+
+
+
+**FIGURE 2-1. 1) DISTANCE BETWEEN O-D AND OCCUPANCY LEVEL**
+
+```{r fig.height=5, fig.width=8, echo=TRUE, results=FALSE, message=FALSE, warning=FALSE}
+
+m_distance <- ddply(train_data, "occupancy", summarise, grp.mean=mean(distance))
+
+ggplot(train_data, aes(x=distance, color=occupancy, fill=occupancy)) +
+geom_histogram(aes(y=..density..), position="identity", alpha=0.5)+
+geom_density(alpha=0.5)+
+geom_vline(data=m_distance, aes(xintercept=grp.mean, color=occupancy),
+           linetype="dashed")+
+scale_color_manual(values=c("#56B4E9", "#999999", "#E69F00"))+
+scale_fill_manual(values=c("#56B4E9", "#999999", "#E69F00"))+
+labs(title="Trips by O-D Distance and Occupancy Level", x="Trip Distance", y = "Density")+
+theme_classic()
+
+```
+
+
+
+
+2) NUMBER OF TRAINS - Origination and Desination
+
+The below graph shows the number of uniques trains at origination stations by occupancy level. In the lower level of the number, low occupancy level shows the high percentage, but the high occupancy level shows the higest percentage over 3. This indicates that in the originations having more trains have higher occupancy level. The second chart shows the number of trains at destination stations by occupancy levels and it has very similar distribution as the originations.
+
+```{r fig.height=5, fig.width=8, echo=TRUE, results=FALSE, message=FALSE, warning=FALSE}
+
+train_data_utrains_og <- train_data %>%
+  group_by(count_vehicle_from, occupancy) %>%
+  dplyr::count(count_vehicle_from, sort = TRUE, name = "count")
+
+F_utrains_og <- ggplot(train_data_utrains_og, aes(x = count_vehicle_from, y = count, fill=occupancy)) + 
+  geom_bar(stat = "identity") +
+  ggtitle("Number of Trains at Origination by Occupancy Level") +
+  xlab("Number of Trains at Origination") + ylab("Count") +
+  scale_fill_manual(values=c("#56B4E9", "#999999", "#E69F00"))+
+  theme_minimal()
+
+F_utrains_og 
+
+```
+
+
+```{r fig.height=5, fig.width=8, echo=TRUE, results=FALSE, message=FALSE, warning=FALSE}
+
+train_data_utrains_to <- train_data %>%
+  group_by(count_vehicle_to, occupancy) %>%
+  dplyr::count(count_vehicle_to, sort = TRUE, name = "count")
+
+F_utrains_to <- ggplot(train_data_utrains_to, aes(x = count_vehicle_to, y = count, fill=occupancy)) + 
+  geom_bar(stat = "identity") +
+  ggtitle("Number of Trains at Destination by Occupancy Level") +
+  xlab("Number of Trains at Destination") + ylab("Count") +
+  scale_fill_manual(values=c("#56B4E9", "#999999", "#E69F00"))+
+  theme_minimal()
+
+F_utrains_to
+
+```
+
+
+
+####2-2. TIME FEATURES
+
+1) THE DAYS OF WEEK
+
+The below chart show the number of travel by weekdays and occupancy level. The total number of travel in working-days shows much higher than the weekdends. And each weekday has different level of occupancy. Friday has the high total number and highest percentage of high occupancy level. In the total number, Saturday has the lowest value and Wednesday has the highest percentage of low occupancy level.
+
+
+```{r fig.height=5, fig.width=8, echo=TRUE, results=FALSE, message=FALSE, warning=FALSE}
+
+train_data_weekdays <- train_data %>%
+  group_by(weekdays, occupancy) %>%
+  dplyr::count(weekdays, sort = TRUE, name = "count")
+
+F_weekdays <- ggplot(train_data_weekdays, aes(x = reorder(weekdays, -count), y = count, fill=occupancy)) + 
+  geom_bar(stat = "identity") +
+  ggtitle("Trips by Weekdays and Occupancy Level") +
+  xlab("The Days of Week") + ylab("Count") +
+  scale_fill_manual(values=c("#56B4E9", "#999999", "#E69F00"))+
+  theme_minimal()
+
+F_weekdays 
+
+```
+
+
+
+2) HOURS
+
+In case of numer of travels by hours and occupancy levels, the peaktimes in a day show the higher number of trips and high occupancy level. Furthermore, train occupancy levels are extremely separated. Except of the peaktimes, most of time period have the high low occupancy levels. It implies that most of train users use it as a commuting.
+
+
+```{r fig.height=5, fig.width=8, echo=TRUE, results=FALSE, message=FALSE, warning=FALSE}
+
+train_data_hours <- train_data %>%
+  group_by(hours, occupancy) %>%
+  dplyr::count(hours, sort = TRUE, name = "count")
+
+F_hours <- ggplot(train_data_hours, aes(x = reorder(hours, -count), y = count, fill=occupancy)) + 
+  geom_bar(stat = "identity") +
+  ggtitle("Trips by Hours and Occupancy Level") +
+  xlab("Hours") + ylab("Count") +
+  scale_fill_manual(values=c("#56B4E9", "#999999", "#E69F00"))+
+  theme_minimal()
+
+F_hours
+
+```
+
+
+
+####2-3. SOCIO-DEMOGRAPHIC FEATURES
+
+```{r echo=TRUE, fig.height=8, fig.width=15, results=FALSE, message=FALSE, warning=FALSE}
+
+# Belgium datasets
+data(BE_OSM_ADMIN, package = "BelgiumMaps.Admin")
+data(TF_EAE_LAND_OCCUPTN_2015, package = "BelgiumStatistics")
+data(TF_SOC_POP_STRUCT_2015, package = "BelgiumStatistics") # 2015 is the most recent one that I could find in the open data.
+
+## Get some statistics about the municipalities
+population <- as.data.table(TF_SOC_POP_STRUCT_2015)
+population <- population[, list(POPULATION = sum(MS_POPULATION),
+                                POPULATION.ADULT = sum(MS_POPULATION[CD_AGE >= 18])), 
+                by = list(CD_MUNTY_REFNIS, TX_MUNTY_DESCR_NL, TX_ADM_DSTR_DESCR_NL, TX_PROV_DESCR_NL, TX_RGN_DESCR_NL)]
+population$TX_PROV_DESCR_NL <- ifelse(is.na(population$TX_PROV_DESCR_NL), population$TX_RGN_DESCR_NL, population$TX_PROV_DESCR_NL)
+
+surface <- as.data.table(TF_EAE_LAND_OCCUPTN_2015)
+surface <- surface[, list(SURFACE_HECTARE = sum(MS_TOT_SUR),
+                          KADASTRAAL_INKOMEN = sum(MS_TOT_CDSTRL_INC)), by = list(CD_MUNTY_REFNIS)]
+
+## Join population stats with kadaster data  
+x <- merge(population, surface, by = "CD_MUNTY_REFNIS")
+
+## Join the maps with the data based on the INS code
+mymap <- merge(BE_OSM_ADMIN, x, by.x = "tag.ref.ins", by.y = "CD_MUNTY_REFNIS", all.x=FALSE, all.y=FALSE)
+mymap$SURFACE_SQUARE_KM <- mymap$SURFACE_HECTARE / 100
+mymap$POPULATION.DENSITY <- mymap$POPULATION / mymap$SURFACE_SQUARE_KM
+mymap$KADASTRAAL.INKOMEN.PERADULTPERSON <- mymap$KADASTRAAL_INKOMEN / mymap$POPULATION.ADULT
+mymap$POPULATION.DENSITY.GRP <- cut2(mymap$POPULATION.DENSITY, g = 10)
+mymap$KADASTRAAL.INKOMEN.PERADULTPERSON.GRP <- cut2(mymap$KADASTRAAL.INKOMEN.PERADULTPERSON, g = 10)
+
+## Take gemeenten + provincies
+gemeenten <- subset(mymap, !is.na(POPULATION) & admin.level %in% c("8"))
+provincies <- subset(BE_OSM_ADMIN, admin.level == "6")
+
+##Spatial join train points with the polygon having income and population data
+mymap_sf <- mymap %>%
+  spTransform(MyNewProjection) %>%
+  st_as_sf()
+
+train_data_og_sf3 <- st_intersection(train_data_og_sf2, mymap_sf)
+train_data_og_sf3 <- train_data_og_sf3 %>% 
+  dplyr::select(1:16,53,54)
+train_data_to_sf3 <- st_intersection(train_data_to_sf2, mymap_sf)
+train_data_to_sf3 <- train_data_to_sf3 %>% 
+  dplyr::select(1:16,53,54)
+test_data_og_sf3 <- st_intersection(test_data_og_sf2, mymap_sf)
+test_data_og_sf3 <- test_data_og_sf3 %>% 
+  dplyr::select(1:16,52,53)
+test_data_to_sf3 <- st_intersection(test_data_to_sf2, mymap_sf)
+test_data_to_sf3 <- test_data_to_sf3 %>% 
+  dplyr::select(1:16,52,53)
+
+
+# Do table Join the datasets with the original train data - left join
+train_data <- train_data %>% 
+  left_join(train_data_og_sf3)
+names(train_data)[names(train_data) == "POPULATION.DENSITY"] <- "og_popden"
+names(train_data)[names(train_data) == "KADASTRAAL.INKOMEN.PERADULTPERSON"] <- "og_incper"
+
+train_data_to_sf3 <- st_set_geometry(train_data_to_sf3, NULL)
+train_data <- train_data %>% 
+  dplyr::left_join(train_data_to_sf3)
+names(train_data)[names(train_data) == "POPULATION.DENSITY"] <- "to_popden"
+names(train_data)[names(train_data) == "KADASTRAAL.INKOMEN.PERADULTPERSON"] <- "to_incper"
+
+test_data <- test_data %>% 
+  left_join(test_data_og_sf3)
+names(test_data)[names(test_data) == "POPULATION.DENSITY"] <- "og_popden"
+names(test_data)[names(test_data) == "KADASTRAAL.INKOMEN.PERADULTPERSON"] <- "og_incper"
+
+test_data_to_sf3 <- st_set_geometry(test_data_to_sf3, NULL)
+test_data <- test_data %>% 
+  dplyr::left_join(test_data_to_sf3)
+names(test_data)[names(test_data) == "POPULATION.DENSITY"] <- "to_popden"
+names(test_data)[names(test_data) == "KADASTRAAL.INKOMEN.PERADULTPERSON"] <- "to_incper"
+
+```
+
+**FIGURE 2-3. 0) POPULATION DENSITY AND CADASTRAL INCOME IN BELGIUM**
+
+```{r echo=TRUE, fig.height=10, fig.width=15, fig.align="center", message=FALSE, warning=FALSE}
+
+tm_shape(gemeenten) +
+  tm_fill(col=c("POPULATION.DENSITY.GRP", "KADASTRAAL.INKOMEN.PERADULTPERSON.GRP"), 
+          title=c("Population Density (per km2)", "Cadastral Income (per adult person)"), palette = "GnBu") +
+  tm_borders("black", alpha = .5) + 
+  tm_shape(provincies, lwd = 2) + tm_borders("grey25", lwd = 4) +
+  tm_compass(position = c("right", "bottom")) 
+
+```
+
+
+
+1) POPULATION DENSITY - Origination and Destination
+
+The above two maps show the population densities and cadastral income level in belgium. The two maps mostly have strong spatial correlation except for the east-southern part of Belgium. The values of population densities and cadastral income at each stations was collected by the above maps. 
+
+The below population densities of originations show high standard deviations. The dnesities are quite different by occupancy level. Medium occupancy level show the highest standard deviation, but low occupancy level has the lowest standard deviation. This also implies the commuter pattens of people. The left areas having lower population desntieis represent work places and the right areas having higher population densities mean resident areas. Though the below two maps are related to population densities, the x-axis implies the space features in the city of Brussel.
+
+On the other hand, the second chat shows the number of trips by population dnesity at destination and occupancy level. In chart, the left still means work place and right represent the resident areas, but it would have the differnt time period compared to the former one. Most of distribution is similar, but the average population densities at destination by occupancy level are quite different from the originations. In the origination chart, the difference between average by occupancy level is quite low comparetively, but in the destination chart, the difference is bigger. This implies that train users come from the areas having similar backbrounds and go to the areas having different backgrounds based on the population densities. 
+
+
+
+```{r fig.height=5, fig.width=8, echo=TRUE, results=FALSE, message=FALSE, warning=FALSE}
+
+m_og_popden <- ddply(train_data, "occupancy", summarise, grp.mean=mean(og_popden))
+
+ggplot(train_data, aes(x=og_popden, color=occupancy, fill=occupancy)) +
+geom_histogram(aes(y=..density..), position="identity", alpha=0.5)+
+geom_density(alpha=0.6)+
+geom_vline(data=m_og_popden, aes(xintercept=grp.mean, color=occupancy),
+           linetype="dashed")+
+scale_color_manual(values=c("#56B4E9", "#999999", "#E69F00"))+
+scale_fill_manual(values=c("#56B4E9", "#999999", "#E69F00"))+
+labs(title="Trips by Population Density at Origination and Occupancy Level", x="Population Density", y = "Density")+
+theme_classic()
+
+```
+
+
+
+```{r fig.height=5, fig.width=8, echo=TRUE, results=FALSE, message=FALSE, warning=FALSE}
+
+m_to_popden <- ddply(train_data, "occupancy", summarise, grp.mean=mean(to_popden))
+
+ggplot(train_data, aes(x=to_popden, color=occupancy, fill=occupancy)) +
+geom_histogram(aes(y=..density..), position="identity", alpha=0.5)+
+geom_density(alpha=0.6)+
+geom_vline(data=m_to_popden, aes(xintercept=grp.mean, color=occupancy),
+           linetype="dashed")+
+scale_color_manual(values=c("#56B4E9", "#999999", "#E69F00"))+
+scale_fill_manual(values=c("#56B4E9", "#999999", "#E69F00"))+
+labs(title="Trips by Population Density at Destination and Occupancy Level",x="Population Density", y = "Density")+
+theme_classic()
+
+```
+
+
+
+
+2) CADASTRAL INCOME - Origination and Destination
+
+The below two graphs show the cadastral income level at origination and destination by occupancy level. The below maps also The trip densities are highest at about over 1,000 euro per month. There are rare trips as to areas with 1,700 - 2,700 as an origination or destination, which means that most of rail users lives in the area with around 1,000. As the population density maps, the below two maps also implie the space features. The right area with higher income means the central district in Brussel, and the left area with lower income area represent the outer area from the central district.  
+
+The most different things between the cadastral incomes and the population density is the average by occupancy level. In the population density charts, the low occupancy level locates the lower average population dentieis, but the average of medium and high occupancy levels are very similar. However, in the cadastral income charts, the averages by occupancy level are quite similar. This implies that the lower occupancy levels passes low population density areas, but the cadatral income of the area is very similar as the higher population density areas.
+
+
+
+```{r fig.height=5, fig.width=8, echo=TRUE, results=FALSE, message=FALSE, warning=FALSE}
+
+m_og_incper <- ddply(train_data, "occupancy", summarise, grp.mean=mean(og_incper))
+
+ggplot(train_data, aes(x=og_incper, color=occupancy, fill=occupancy)) +
+geom_histogram(aes(y=..density..), position="identity", alpha=0.5)+
+geom_density(alpha=0.6)+
+geom_vline(data=m_og_incper, aes(xintercept=grp.mean, color=occupancy),
+           linetype="dashed")+
+scale_color_manual(values=c("#56B4E9", "#999999", "#E69F00"))+
+scale_fill_manual(values=c("#56B4E9", "#999999", "#E69F00"))+
+labs(title="Trips by Cadastral Income at Origination and Occupancy level",x="Cadastral Income per Adult Person", y = "Density")+
+theme_classic()
+
+```
+
+
+
+```{r fig.height=5, fig.width=8, echo=TRUE, results=FALSE, message=FALSE, warning=FALSE}
+
+m_to_incper <- ddply(train_data, "occupancy", summarise, grp.mean=mean(to_incper))
+
+ggplot(train_data, aes(x=to_incper, color=occupancy, fill=occupancy)) +
+geom_histogram(aes(y=..density..), position="identity", alpha=0.5)+
+geom_density(alpha=0.6)+
+geom_vline(data=m_to_incper, aes(xintercept=grp.mean, color=occupancy),
+           linetype="dashed")+
+scale_color_manual(values=c("#56B4E9", "#999999", "#E69F00"))+
+scale_fill_manual(values=c("#56B4E9", "#999999", "#E69F00"))+
+labs(title="Trips by Cadastral Income at Destination and Occupancy Level",x="Cadastral Income per Adult Person", y = "Density")+
+theme_classic()
+
+```
+
+
+
+
+
+###3. CORRELATION
+
+Before building a modling, the correlation matrix are created based on the above independent variables. The below matrix show the correlation between the occupancy level and independent variables. The matrix show that there is no strong correlation between the inpendent variables and the dependent variable. The most strong correlation with the occupancy level is the peaktime. 
+
+
+
+```{r echo=TRUE, results=FALSE, fig.height=10, fig.width=15, message=FALSE, warning=FALSE}
+
+train_data_corr1 <- train_data %>% 
+  mutate (
+       weekdays = ifelse(weekdays == "Monday", 1,
+                         ifelse(weekdays == "Tuesday", 2,
+                                ifelse(weekdays == "Wednesday", 3,
+                                       ifelse(weekdays == "Thursday", 4,
+                                              ifelse(weekdays == "Friday", 5,
+                                                     ifelse(weekdays == "Saturday", 6, 7)))))),
+       occupancy = ifelse(occupancy == "low", 1, 
+                          ifelse(occupancy == "medium", 2, 3)))
+
+train_data_corr2 <- train_data_corr1 %>%
+  dplyr::select(7,12,14:25)
+
+write.csv(train_data_corr2, "C:/Users/user/Desktop/Spatial/FinalProject_Coding/train_data_corr2.csv", row.names = FALSE)
+train_data_corr3 <-
+  read.csv("C:/Users/user/Desktop/Spatial/FinalProject_Coding/train_data_corr3.csv")
+
+corrplot.mixed(cor(train_data_corr3), order="hclust", tl.col="black")
+
+```
+
+
+
+###4. MULTINOMIAL REGRESSION MODELING
+
+The model for train occupancy level prediction would be the multinomial logistic model because the prediction objects are three level, which are low, medium, and high. The nnet package were used to estimate a multinomial logistic regression model. Before building a model, the occupancy level and the weekdays are chagned to the number. And the numbers were converted to factors as categorical variables. 
+
+Before predicting a test set, we found that most of data in the test datset do not have the income and population densities column because it locates in the outside of the Belgium. There were two solutions for this problem. First, finding the each dataset's location and the population densities and income level. But this solution is really hard and time consuming work. Aother choice is excluding the rows for predicting the model. So, we exclude the two variables on our independent variables before buliding a model.
+
+
+```{r echo=TRUE, results=FALSE, message=FALSE, warning=FALSE}
+
+train_data_corr4 <- train_data_corr3 %>% 
+  dplyr::select(-hours, -to_popden, -to_incper) # use "peaktime" instead of hours
+
+train_data_corr4$weekdays <- factor(train_data_corr4$weekdays, levels=sort(unique(train_data_corr4$weekdays)))
+train_data_corr4$occupancy <- factor(train_data_corr4$occupancy, levels=sort(unique(train_data_corr4$occupancy)))
+
+train_data_corr4$occupancy2 <- relevel(train_data_corr4$occupancy, ref = "3")
+
+```
+
+First, we choose the level of our outcome that we wish to use as our baseline, "high occupancy level 3", and specify this in the relevel function. Then, we run our model using multinom. The multinom package does not include p-value calculation for the regression coefficients. We would calculate p-values using Wald tests.
+
+```{r echo=TRUE, results=TRUE, message=TRUE, warning=FALSE}
+
+multi1 <- multinom(occupancy2 ~ distance + weekdays + peaktime + count_vehicle_from + count_vehicle_to + 
+                   og_in_bxl + to_in_bxl + og_popden + og_incper, data = train_data_corr4)
+
+```
+
+
+The model summary output shows the coefficients and standard errors. Each of these has one row values corresponding to a model equation. For example, for the coefficient of peaktime, a one-unit increase in the variable peak-time is associated with the decrease in the log odds of low occupancy level vs high occupancy level in the amount of 0.74. And, for the coefficient of the weekdays, the log odds of low occupancy level vs. high occupancy level will increase by 0.85 if moving from Monday to Wednesday. 
+
+
+```{r echo=TRUE, results=TRUE, message=TRUE, warning=FALSE}
+
+summary(multi1)
+
+```
+
+```{r echo=TRUE, results=TRUE, message=TRUE, warning=FALSE}
+z <- summary(multi1)$coefficients/summary(multi1)$standard.errors
+z
+
+```
+
+```{r echo=TRUE, results=TRUE, message=TRUE, warning=FALSE}
+# 2-tailed z test
+p <- (1 - pnorm(abs(z), 0, 1)) * 2
+p
+
+```
+
+
+THe ratio of the probability of choosing one outcome category over the probability of choosing the baseline category is often referred as relative risk. We can exponentiate the coefficient from our model to see the risk ratios.
+
+```{r echo=TRUE, results=TRUE, message=TRUE, warning=FALSE}
+## extract the coefficients from the model and exponentiate
+exp(coef(multi1))
+
+```
+
+The below values show predicted probabilities for each of our outcome levels using the fitted function. 
+
+
+```{r echo=TRUE, results=TRUE, message=TRUE, warning=FALSE}
+head(pp <- fitted(multi1))
+
+```
+
+
+###5. PREDICTION
+
+
+```{r echo=TRUE, results=FALSE, message=FALSE, warning=FALSE}
+
+test_data2 <- test_data %>%
+  mutate (
+       weekdays = ifelse(weekdays == "Monday", 1,
+                         ifelse(weekdays == "Tuesday", 2,
+                                ifelse(weekdays == "Wednesday", 3,
+                                       ifelse(weekdays == "Thursday", 4,
+                                              ifelse(weekdays == "Friday", 5,
+                                                     ifelse(weekdays == "Saturday", 6, 7)))))))
+
+test_data3 <- test_data2 %>% 
+  dplyr::select(-date, -time, -connection, -from, -to, -vehicle, 
+                -from.X, -from.Y, -to.X, -to.Y, -datetime, -hours, 
+                -station_id, -geometry, -to_popden, -to_incper)
+
+write.csv(test_data3, "C:/Users/user/Desktop/Spatial/FinalProject_Coding/test_data3.csv", row.names = FALSE)
+test_data4 <-
+  read.csv("C:/Users/user/Desktop/Spatial/FinalProject_Coding/test_data4.csv")
+
+test_data4$weekdays <- factor(test_data4$weekdays, levels=sort(unique(test_data4$weekdays)))
+
+```
+
+
+First, we developed our modeling with the expectation that we would make the confusion matrix based on the expected values and actual values. But we found that there is no real occupancy level in the test datasets. We could not make a confusion matrix for comprison between expected values and actual values because there is no real occupancy level in the test datasets. Therefore We could not get the missclassification error. Only thing that we could do with the test dataset is the expected values based on our modeling as the below. 
+
+Instead, we made a confusion matrix with the training dataset with our modeling. Though we evaluate our modeling with the all dataset we developed for checking the confusion matrix, the outcome was not pretty good. As the below chart, The accuracy of our model is about 45.5%. 
+
+```{r echo=TRUE, results=TRUE, message=TRUE, warning=FALSE}
+## store the predicted probabilities for each value of ses and write
+predicted_scores <- predict(multi1, test_data4, "probs")
+predicted_class <- predict(multi1, test_data4)
+head(predicted_scores)
+
+```
+
+```{r echo=TRUE, results=TRUE, message=TRUE, warning=FALSE}
+predicted_class2 <- predict(multi1, train_data_corr4)
+confusionMatrix(predicted_class2, train_data_corr4$occupancy)
+
+```
+
+
+###6. CONCLUSION
+
+Our modeling of prediction for rail occupancy level in Belgium has some limitations with the missclassification error of 54.5%. Though it shows not so much impressive outcomes, it still useful for the first step for developing the model for rail occupancy level. It can be improved by enhancing the model terms and collecting more accurate and various datasets especially related to modal shift in Belgium.
+
+During this assignment and for this semester, we have developed the insights for spatial analysis skills and extended our visions and competence as a professional future planner. We would like to be thankful to Prof. Ken Steif and Michael Fichman for their passionate teaching and considerate patience.
+
+
